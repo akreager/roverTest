@@ -14,8 +14,8 @@ RoboClaw roboclaw(&Serial1, 10000);
 #define LINE1   0xC0
 
 void setup() {
-  //Communciate with roboclaw at 230400 baud
-  roboclaw.begin(230400);
+  //Communciate with roboclaw at 38400 baud
+  roboclaw.begin(38400);
   delay(100);
 
   //Communicate with serial LCD at 9600 baud
