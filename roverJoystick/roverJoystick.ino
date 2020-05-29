@@ -26,8 +26,8 @@ void setup() {
   //Serial.begin(230400);
   //Serial.println("X,Y");
 
-  //Communciate with roboclaw at 230400 baud
-  roboclaw.begin(230400);
+  //Communciate with roboclaw at 38400 baud
+  roboclaw.begin(38400);
   roboclaw.ForwardBackwardMixed(address, valY);
   roboclaw.LeftRightMixed(address, valX);
 
