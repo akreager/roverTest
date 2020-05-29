@@ -1,11 +1,6 @@
 //Sketch to read data from Roboclaw motordriver
 //Basicmicro Arduino library and examples:
 //https://github.com/basicmicro/roboclaw_arduino_library
-//Connections:
-//Roboclaw     Arduino Mega     Serial LCD
-//   S1          18, TX1
-//   S2          19, RX1
-//               16, TX2           RX
 
 #include "RoboClaw.h"
 
