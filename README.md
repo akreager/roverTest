@@ -1,3 +1,3 @@
 # roverTest
  
-Just a few arduino sketchhes for my Roboclaw driven rover test platform.
+Collection of Arduino sketches for testing control of various aspects of a remote-controlled robot.
