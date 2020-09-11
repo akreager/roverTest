@@ -18,9 +18,9 @@
 #include <RF24.h>
 #include <RoboClaw.h>
 
-void resetData();
-void readRoboclaw();
-void resetACK();
+void failsafe_connection_dropped();
+void read_roboclaw_data();
+void update_acknowledge_package();
 
 //nRF24 connected to hardware SPI at address 00001
 #define CE_PIN 49
@@ -30,9 +30,9 @@ const byte nRFaddress[6] = "00001";
 
 //Roboclaw connected to Serial1 at address 0x80
 RoboClaw roboclaw(&Serial1, 10000);
-#define rcAddress 0x80
+#define roboclaw_address 0x80
 
-unsigned int rawBattery = 0;
+uint16_t rawBattery = 0;
 uint16_t rawTemp1 = 0;
 uint16_t rawTemp2 = 0;
 int16_t rawCurrentMotor1 = 0;
@@ -66,7 +66,7 @@ ackPackage ack;
 
 void setup() {
   //start wireless connection
-  resetACK();
+  update_acknowledge_package();
   radio.begin();
   radio.openReadingPipe(0, nRFaddress);
   radio.setDataRate(RF24_250KBPS);
@@ -74,14 +74,13 @@ void setup() {
   radio.enableAckPayload();
   radio.writeAckPayload(0, &ack, sizeof(ackPackage));
   radio.startListening();
-  resetData();
-
+  
   //Communciate with roboclaw at 38400 baud
+  failsafe_connection_dropped();
   roboclaw.begin(38400);
-  //delay(100);
-  roboclaw.ForwardBackwardMixed(rcAddress, data.throttle);
-  roboclaw.LeftRightMixed(rcAddress, data.steering);
-  //delay(100);
+  roboclaw.ForwardBackwardMixed(roboclaw_address, data.throttle);
+  roboclaw.LeftRightMixed(roboclaw_address, data.steering);
+
 }
 
 void loop() {
@@ -92,53 +91,53 @@ void loop() {
     radio.writeAckPayload(0, &ack, sizeof(ackPackage));
 
     //forward received data roboclaw
-    roboclaw.ForwardBackwardMixed(rcAddress, data.throttle);
-    roboclaw.LeftRightMixed(rcAddress, data.steering);
-
-    //retreive data from roboclaw for acknowledge payload
-    if (readInterval >= readThreshold) {
-      readRoboclaw();
-      readInterval = 0;
-    }
+    roboclaw.ForwardBackwardMixed(roboclaw_address, data.throttle);
+    roboclaw.LeftRightMixed(roboclaw_address, data.steering);
   }
 
+  //retreive data from roboclaw for acknowledge payload
+  if (readInterval >= readThreshold) {
+    read_roboclaw_data();
+    readInterval = 0;
+  }
+  
   //verify connection is alive
   currentTime = millis();
   if (currentTime - lastReceiveTime > 1000 ) {
     //reset to neutral if connection lost
-    resetData();
+    failsafe_connection_dropped();
   }
 
   readInterval++;
 }
 
-void resetData() {
-  //Reset the values when there is no radio connection
+void failsafe_connection_dropped() {
+  //Set throttle and steering to neutral if there is no radio connection
   data.throttle = 64;
   data.steering = 64;
 }
 
-void readRoboclaw() {
+void read_roboclaw_data() {
   //Read data fromm roboclaw
   //main battery voltage, tenths of a volt
-  //bool valid1;
-  //rawBattery = roboclaw.ReadMainBatteryVoltage(rcAddress, &valid1);
-  rawBattery = roboclaw.ReadMainBatteryVoltage(rcAddress);
+  bool valid1;
+  rawBattery = roboclaw.ReadMainBatteryVoltage(roboclaw_address, &valid1);
+  //rawBattery = roboclaw.ReadMainBatteryVoltage(roboclaw_address);
 
   //roboclaw board temperature 1, tenths of a degree
-  if (roboclaw.ReadTemp(rcAddress, rawTemp1)) {};
+  if (roboclaw.ReadTemp(roboclaw_address, rawTemp1)) {};
 
   //roboclaw board temperature 2, tenths of a degree
-  if (roboclaw.ReadTemp2(rcAddress, rawTemp2)) {};
+  if (roboclaw.ReadTemp2(roboclaw_address, rawTemp2)) {};
 
   //instantaneous mmotor amp draw, hundredths of an amp
-  if (roboclaw.ReadCurrents(rcAddress, rawCurrentMotor1, rawCurrentMotor2)) {};
+  if (roboclaw.ReadCurrents(roboclaw_address, rawCurrentMotor1, rawCurrentMotor2)) {};
 
-  //send roboclaw data to acknowledge packet
-  resetACK();
+  //update acknowledge packet with new data from roboclaw
+  update_acknowledge_package();
 }
 
-void resetACK() {
+void update_acknowledge_package() {
   ack.highBatt = highByte(rawBattery);
   ack.lowBatt = lowByte(rawBattery);
   ack.highTemp1 = highByte(rawTemp1);
