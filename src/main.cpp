@@ -11,16 +11,20 @@
   Basicmicro Roboclaw Arduino library and examples:
   https://github.com/basicmicro/roboclaw_arduino_library
 */
-
+//Include libraries
 #include <Arduino.h>
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
 #include <RoboClaw.h>
 
+//Declare C++ functions to be used
 void failsafe_connection_dropped();
+void read_rf_data();
 void read_roboclaw_data();
 void update_acknowledge_package();
+void disable_motors();
+void enable_motors();
 
 //nRF24 connected to hardware SPI at address 00001
 #define CE_PIN 49
@@ -31,7 +35,9 @@ const byte nRFaddress[6] = "00001";
 //Roboclaw connected to Serial1 at address 0x80
 RoboClaw roboclaw(&Serial1, 10000);
 #define roboclaw_address 0x80
+#define motor_stop_pin 7
 
+//Declare variables
 uint16_t rawBattery = 0;
 uint16_t rawTemp1 = 0;
 uint16_t rawTemp2 = 0;
@@ -42,10 +48,14 @@ unsigned long currentTime = 0;
 int readInterval = 0;
 int readThreshold = 10;
 
+//Declare flags
+bool flag_motor_stop = true;
+
 //package to contain incoming data
 struct dataPackage {
   byte throttle;
   byte steering;
+  bool data_motor_stop;
 };
 dataPackage data;
 
@@ -61,10 +71,13 @@ struct ackPackage {
   byte lowIM1;
   byte highIM2;
   byte lowIM2;
+  bool ack_motor_stop;
 };
 ackPackage ack;
 
 void setup() {
+  pinMode(motor_stop_pin, OUTPUT);
+
   //start wireless connection
   update_acknowledge_package();
   radio.begin();
@@ -80,19 +93,19 @@ void setup() {
   roboclaw.begin(38400);
   roboclaw.ForwardBackwardMixed(roboclaw_address, data.throttle);
   roboclaw.LeftRightMixed(roboclaw_address, data.steering);
-
 }
 
 void loop() {
   // Check whether there is data to be received
   if (radio.available()) {
-    radio.read(&data, sizeof(dataPackage));
-    lastReceiveTime = millis();
-    radio.writeAckPayload(0, &ack, sizeof(ackPackage));
+    read_rf_data();
+  }
 
-    //forward received data roboclaw
-    roboclaw.ForwardBackwardMixed(roboclaw_address, data.throttle);
-    roboclaw.LeftRightMixed(roboclaw_address, data.steering);
+  //verify connection is alive
+  currentTime = millis();
+  if (currentTime - lastReceiveTime > 1000 ) {
+    //failsafe condition if connection lost
+    failsafe_connection_dropped();
   }
 
   //retreive data from roboclaw for acknowledge payload
@@ -100,21 +113,33 @@ void loop() {
     read_roboclaw_data();
     readInterval = 0;
   }
-  
-  //verify connection is alive
-  currentTime = millis();
-  if (currentTime - lastReceiveTime > 1000 ) {
-    //reset to neutral if connection lost
-    failsafe_connection_dropped();
-  }
-
   readInterval++;
 }
 
 void failsafe_connection_dropped() {
-  //Set throttle and steering to neutral if there is no radio connection
+  //Failsafe condition if there is no radio connection
+  disable_motors();
   data.throttle = 64;
   data.steering = 64;
+}
+
+void read_rf_data() {
+  //Read data from nRF module
+  radio.read(&data, sizeof(dataPackage));
+    lastReceiveTime = millis();
+    radio.writeAckPayload(0, &ack, sizeof(ackPackage));
+
+    //Forward received data roboclaw
+    roboclaw.ForwardBackwardMixed(roboclaw_address, data.throttle);
+    roboclaw.LeftRightMixed(roboclaw_address, data.steering);
+
+    //Check M-Stop flag
+    if (flag_motor_stop == true && data.data_motor_stop == false) {
+      enable_motors();
+    }
+    else if (flag_motor_stop == false && data.data_motor_stop == true) {
+      disable_motors();
+    }
 }
 
 void read_roboclaw_data() {
@@ -148,4 +173,15 @@ void update_acknowledge_package() {
   ack.lowIM1 = lowByte(rawCurrentMotor1);
   ack.highIM2 = highByte(rawCurrentMotor2);
   ack.lowIM2 = lowByte(rawCurrentMotor2);
+  ack.ack_motor_stop = flag_motor_stop;
+}
+
+void disable_motors() {
+  digitalWrite(motor_stop_pin, LOW);
+  flag_motor_stop = true;
+}
+
+void enable_motors() {
+  digitalWrite(motor_stop_pin, HIGH);
+  flag_motor_stop = false;
 }
